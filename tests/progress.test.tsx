@@ -2,6 +2,7 @@ import { describe, expect, mock, test } from 'claude-code/testing'
 import type { On } from 'claude-code'
 
 import { phaseOf, phaseOfCommand } from '../hooks/classify'
+import { costOf, displayName, modelKey } from '../hooks/pricing'
 
 // The test runner provides a console; the plugin's own environment has none.
 declare const console: { log: (...args: unknown[]) => void }
@@ -66,8 +67,9 @@ function card(title: string, tree: unknown): string {
 
 // ------------------------------------------------ the engine beneath
 
-function engine(on: On, ledger: { usd: number }) {
+function engine(on: On, ledger: { usd: number }, current = 'claude-opus-5-5') {
   const clock = mock.clock(on, { now: 1_000_000 })
+  on('session.model', () => ({ value: current }))
   on('command.register', () => ({ value: { command: 'progress' } }))
   on('ui.open', () => ({ value: { isPlaced: true } }))
   on('ui.status', () => ({ value: undefined }))
@@ -201,7 +203,7 @@ test('a bug fix shows research, build and test; plan and ship stay empty', async
   const ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
   console.log(card('── fixing a bug', await ui.drawn()))
   expect((await ui.findAll({ type: 'Text', text: /^Done · / })).length).toBe(3)
-  expect((await ui.findAll({ type: 'Text', text: /^—$/ })).length).toBe(2)
+  expect((await ui.findAll({ type: 'Text', text: /^ ○ $/ })).length).toBe(2)
   await ui.unmount()
 })
 
@@ -261,5 +263,98 @@ test('/progress reset starts a new estimate inside a longer session', async ($, 
   expect((await ui.find({ type: 'Text', text: /\$1\.25/ })) !== undefined).toBe(true)
   expect((await ui.find({ type: 'Text', text: /^100$/ }))?.text).toBe('100')
   expect((await ui.findAll({ type: 'Text', text: /^Done · / })).length).toBe(1)
+  await ui.unmount()
+})
+
+// ------------------------------------------------ pricing
+
+describe('pricing', () => {
+  test('model ids in every spelling find their price', () => {
+    expect(modelKey('claude-opus-5-5')).toBe('opus-5-5')
+    expect(modelKey('claude-haiku-4-5-20251001')).toBe('haiku-4-5')
+    expect(modelKey('claude-opus-4-20250514')).toBe('opus-4')
+    expect(modelKey('us.anthropic.claude-sonnet-4-6')).toBe('sonnet-4-6')
+    expect(modelKey('Opus 5.5')).toBe('opus-5-5')
+    expect(modelKey('claude-fable-5-2[1m]')).toBe('fable-5-2')
+    expect(modelKey('gpt-4o')).toBe(undefined)
+    expect(displayName('claude-sonnet-5-5')).toBe('Sonnet 5.5')
+  })
+
+  test('each token kind is charged at its own rate', () => {
+    const million = { input: 1e6, output: 0, cacheRead: 0, cacheWrite: 0 }
+    expect(costOf('claude-opus-5-5', million)).toBe(4)
+    expect(costOf('claude-opus-5-5', { ...million, input: 0, output: 1e6 })).toBe(20)
+    expect(costOf('claude-opus-5-5', { ...million, input: 0, cacheRead: 1e6 })).toBe(0.2)
+    expect(costOf('claude-opus-5-5', { ...million, input: 0, cacheWrite: 1e6 })).toBe(5)
+    expect(costOf('claude-fable-5-2', { ...million, input: 0, cacheRead: 1e6 })).toBe(0.2)
+    expect(costOf('claude-sonnet-5-5', { ...million, input: 0, cacheRead: 1e6 })).toBe(0.1)
+    expect(costOf('claude-sonnet-4-6', { ...million, input: 0, cacheRead: 1e6 })).toBe(0.3)
+    expect(costOf('claude-haiku-5-5', million)).toBe(0.1)
+    expect(costOf('claude-opus-4-1', million)).toBe(15)
+    expect(costOf('mystery-model', million)).toBe(undefined)
+  })
+})
+
+// ------------------------------------------------ the full monitor
+
+test('the monitor shows the model, a split by model, the context and plan limits', async ($, on) => {
+  const ledger = { usd: 0 }
+  const clock = engine(on, ledger)
+  await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
+
+  await $.prompt.submit({ text: 'add OAuth to the API', wait: false, origin: { kind: 'composer' } })
+  await $.tool.call({ tool: 'Agent', subagent_type: 'Explore', prompt: 'find auth code', description: 'explore' })
+  await clock.advance(3 * 60_000)
+  // The Explore subagent ran on Haiku 5.5.
+  await $.turn.complete({
+    reason: 'answer', answer: '', durationMs: 0, isAborted: false, turnId: 's1', agentId: 'a1',
+    usage: { ...usage(200_000, 20_000, 4_000_000, 300_000), model: 'claude-haiku-5-5' },
+  })
+  await $.tool.call({ tool: 'Edit', file_path: '/api/auth.ts', old_string: 'a', new_string: 'b' })
+  await clock.advance(12 * 60_000)
+  await $.turn.complete({
+    reason: 'answer', answer: '', durationMs: 0, isAborted: false, turnId: 't1',
+    usage: usage(600_000, 150_000, 30_000_000, 1_200_000),
+  })
+  const resets = new Date(1_000_000 + 15 * 60_000 + (2 * 60 + 10) * 60_000).toISOString()
+  const weekly = new Date(1_000_000 + 15 * 60_000 + (4 * 24 + 3) * 3600_000).toISOString()
+  await $.session.measure({
+    context: { tokens: 412_000, window: 1_000_000, percent: 41 },
+    rateLimits: [
+      { kind: 'five_hour', percentUsed: 67, resetsAt: resets },
+      { kind: 'seven_day', percentUsed: 23.5, resetsAt: weekly },
+    ],
+    cost: { usd: 23.4 },
+    changed: ['context', 'rateLimits', 'cost'],
+  })
+
+  const ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
+  console.log(card('── the full monitor: Opus 5.5 with a Haiku subagent', await ui.drawn()))
+  expect((await ui.find({ type: 'Text', text: /^Opus 5\.5$/ }))?.text).toBe('Opus 5.5')
+  expect((await ui.find({ type: 'Text', text: /\$4 in · \$20 out · \$0\.20 cache/ })) !== undefined).toBe(true)
+  expect((await ui.find({ type: 'Text', text: /^Haiku 5\.5$/ }))?.text).toBe('Haiku 5.5')
+  expect((await ui.find({ type: 'Text', text: /^41%$/ }))?.text).toBe('41%')
+  expect((await ui.find({ type: 'Text', text: /^412K \/ 1\.0M$/ }))?.text).toBe('412K / 1.0M')
+  expect((await ui.find({ type: 'Text', text: /^67%$/ }))?.text).toBe('67%')
+  expect((await ui.find({ type: 'Text', text: /^resets 2h 10m$/ }))?.text).toBe('resets 2h 10m')
+  expect((await ui.find({ type: 'Text', text: /^resets 4d 3h$/ }))?.text).toBe('resets 4d 3h')
+  await ui.unmount()
+
+  // The per-model costs add up to the session's ledger total.
+  const text = (await $.command.run({ command: 'progress', args: '', origin: { kind: 'composer' }, presentation: 'text' } as never)).text ?? ''
+  console.log('\n── /progress summary\n' + text)
+  const dollars = [...text.matchAll(/^  (?:Opus|Haiku) 5\.5 +\S+ +\$([\d.]+)$/gm)].map(m => Number(m[1]))
+  expect(dollars.length).toBe(2)
+  expect(Math.abs(dollars.reduce((a, b) => a + b, 0) - 23.4) < 0.02).toBe(true)
+})
+
+test('an API-key session with no plan limits says so', async ($, on) => {
+  const ledger = { usd: 0 }
+  engine(on, ledger, 'claude-sonnet-5-5')
+  await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
+  const ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
+  console.log(card('── fresh API-key session on Sonnet 5.5', await ui.drawn()))
+  expect((await ui.find({ type: 'Text', text: /^Sonnet 5\.5$/ }))?.text).toBe('Sonnet 5.5')
+  expect((await ui.find({ type: 'Text', text: /Plan limits show here/ })) !== undefined).toBe(true)
   await ui.unmount()
 })

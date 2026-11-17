@@ -1,6 +1,6 @@
 {
   "name": "esitimaty",
-  "description": "Esitimaty: a Progress card for Claude Code showing steps, time, estimated API cost and tokens",
+  "description": "Esitimaty: a project monitor for Claude Code: model, phases, time, cost, tokens, context and plan limits",
   "owner": {
     "name": "P0r0ro"
   },
@@ -8,7 +8,7 @@
     {
       "name": "esitimaty",
       "source": "./",
-      "description": "Progress card estimating a project's phases, time, API-price cost and tokens"
+      "description": "Project monitor: current model and rates, phases, time, API-price cost by model, tokens, context and plan-limit bars"
     }
   ]
 }

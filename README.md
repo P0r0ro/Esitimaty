@@ -1,44 +1,71 @@
 # Esitimaty
 
-A **Progress card for Claude Code** that estimates what a piece of work took: a project, a tool, a mod or a bug fix. It shows which phases the work went through and how long each one took. It also shows time spent, time Claude was actually working, what it would cost at API prices, and how many tokens it used. It runs right in your terminal.
+A **project monitor for Claude Code** that estimates what a piece of work took: a project, a tool, a mod or a bug fix. It shows:
+- **which model** is working, and what it charges
+- **which phases** the work went through, and how long each took
+- **time spent**, and how much of it Claude was actually working
+- **what it would cost** at API prices, split by model
+- **how many tokens** it used
+- **how full** the context window and your plan's usage limits are
+
+It runs right in your terminal.
 
 ```
 ╭──────────────────────────────────────╮
 │ Progress                        idle │
+│ Model                       Opus 5.5 │
+│ $4 in · $20 out · $0.20 cache / 1M   │
 │                                      │
-│  ✓   Research           Done · 4m 0s │
+│  ✓   Research           Done · 3m 0s │
 │  │                                   │
-│  ✓   Plan               Done · 2m 0s │
+│  ○   Plan                          — │
 │  │                                   │
-│  ✓   Build             Done · 25m 0s │
+│  ✓   Build             Done · 12m 0s │
 │  │                                   │
-│  ✓   Test               Done · 8m 0s │
+│  ○   Test                          — │
 │  │                                   │
-│  ✓   Ship               Done · 1m 0s │
+│  ○   Ship                          — │
 │                                      │
-│ Time spent                    50m 0s │
-│ Claude working                40m 0s │
-│ AI cost (estimate)     about $148.19 │
+│ Time spent                    15m 0s │
+│ Claude working                15m 0s │
+│ AI cost (estimate)      about $23.40 │
 │ The coding agent's estimate at API   │
 │ prices, not your bill. A             │
 │ subscription isn't charged this.     │
-│ Tokens                        115.4M │
-│ in 1.2M · out 300.0K · cache 113.9M  │
+│ Tokens                         36.5M │
+│ in 800K · out 170K · cache 35.5M     │
+│ By model                             │
+│ Opus 5.5                31.9M $23.26 │
+│ Haiku 5.5                 4.5M $0.14 │
+│ Limits                               │
+│ Context                          41% │
+│ ██████░░░░░░░░           412K / 1.0M │
+│ Session (5h)                     67% │
+│ █████████░░░░░         resets 2h 10m │
+│ Weekly (7d)                      24% │
+│ ███░░░░░░░░░░░          resets 4d 3h │
 ╰──────────────────────────────────────╯
 ```
 
+The bars turn from green to yellow at 60% and to red at 85%.
+
 ## What you get
 
-- **A Progress pane** beside the chat. It shows the five phases, then these numbers:
+- **A Progress pane** beside the chat:
 
   | Row | What it shows |
   | --- | --- |
+  | **Model** | the model Claude Code is using right now (it follows `/model` switches), with its price per million tokens |
+  | **Phases** | Research → Plan → Build → Test → Ship, with time in each ([below](#the-phases)) |
   | **Time spent** | wall-clock time since the session started (or since your last reset) |
   | **Claude working** | only the time Claude was busy on your requests, not time it sat waiting for you |
-  | **AI cost (estimate)** | the same running total Claude Code's `/cost` shows, at API list prices. **It is not your bill.** On a Pro/Max subscription you aren't charged this amount. |
+  | **AI cost (estimate)** | what the session would cost at API list prices, each response priced at the rate of the model that answered it. **It is not your bill.** On a Pro/Max subscription you aren't charged this amount. |
   | **Tokens** | every token used, subagents included: input, output, cache reads and cache writes |
+  | **By model** | tokens and cost for each model that worked, e.g. Opus for the main work and Haiku for a quick search subagent. Appears once more than one model has worked. |
+  | **Context** | how full the context window is, e.g. `412K / 1.0M` |
+  | **Session (5h) / Weekly (7d)** | your Pro/Max plan's usage limits, with when each resets |
 
-- **A status line entry**, always visible: `⏱ 50m 0s (40m 0s working) · ~$148.19 · 115.4M tok`
+- **A status line entry**, always visible: `Opus 5.5 · ⏱ 15m 0s (15m 0s working) · ~$23.40 · 36.5M tok · ctx 41% · 5h 67% · 7d 24%`
 - **`/progress`** opens the pane and prints a text summary you can copy into a quote or a report.
 - **`/progress reset`** starts a new estimate from now. Use it to measure a single fix or feature inside a longer session.
 
@@ -55,6 +82,33 @@ The phases build up over the whole session (or since your last `/progress reset`
 | **Ship** | Commits, pushes and releases: `git commit/push`, `gh pr create`, `npm publish`, `docker push`, `butler push`, deploy commands, publishing tools |
 
 Time is assigned to the phase that's under way until the next phase starts. Tool calls that don't fit any phase leave the current phase running. Time Claude spends thinking before its first tool call counts toward **Claude working**, but toward no phase.
+
+## Model pricing
+
+The **total cost** comes from Claude Code's own cost ledger, the same number `/cost` shows. Claude Code prices every response at the rate of the model that produced it, so switching models mid-session, or subagents running on a cheaper model, are already counted correctly.
+
+The **By model** split and the rates under the model name come from the list prices in [`hooks/pricing.ts`](hooks/pricing.ts). Each model's tokens are priced at its own rates, and the split is scaled so it adds up exactly to the ledger total.
+
+| Model | Input | Output | Cache write | Cache read |
+| --- | --- | --- | --- | --- |
+| Fable 5.2 / Mythos 5.2 | $8 | $40 | $10 | $0.20 |
+| Fable 5.1 / Mythos 5.1 | $10 | $50 | $12.50 | $0.25 |
+| Fable 5 / Mythos 5 | $10 | $50 | $12.50 | $1.00 |
+| Opus 5.5 | $4 | $20 | $5 | $0.20 |
+| Opus 5, 4.8, 4.7, 4.6, 4.5 | $5 | $25 | $6.25 | $0.50 |
+| Opus 4.1, 4 | $15 | $75 | $18.75 | $1.50 |
+| Sonnet 5.5 | $2 | $10 | $2.50 | $0.10 |
+| Sonnet 5 | $2 | $10 | $2.50 | $0.20 |
+| Sonnet 4.6, 4.5, 4 | $3 | $15 | $3.75 | $0.30 |
+| Haiku 5.5 | $0.10 | $0.50 | $0.125 | $0.01 |
+| Haiku 4.5 | $1 | $5 | $1.25 | $0.10 |
+
+These are USD per million tokens, from the [Claude pricing page](https://platform.claude.com/docs/en/about-claude/pricing), checked 2026-11-17. Cache writes use the 5-minute rate. Haiku 5.5 costs 5× more on prompts over 100K tokens; the ledger total accounts for that, but the per-model split uses the base rate. If prices change, edit `hooks/pricing.ts`. A model missing from the table still counts in the total, but shows "no price" in the split.
+
+## Limits
+
+- **Context** fills as the conversation grows. Near 100%, Claude Code compacts (summarizes) the conversation, so a full bar means a compaction is coming.
+- **Session (5h)** and **Weekly (7d)** are your Pro/Max plan's usage windows, as Claude Code last read them, with a countdown to each reset. They appear after the first reply. If you use an API key, there are no plan limits to show.
 
 ## Install
 
@@ -113,7 +167,16 @@ claude plugin validate .
 claude plugin test .
 ```
 
-The tests check how the phase rules sort about 30 commands and tools. They also simulate four jobs (building a tool, a bug fix, a reverse-engineering mod spread over two messages, and a reset mid-session) and print the card for each.
+The tests check:
+- how the phase rules sort about 30 commands and tools
+- that model ids in every spelling find their price, and that each token kind is charged at its own rate
+- six simulated sessions, printing the card for each:
+  - building a tool
+  - a bug fix
+  - a reverse-engineering mod spread over two messages
+  - a reset mid-session
+  - an Opus session with a Haiku subagent and plan limits, where the per-model costs must add up to the total
+  - a fresh API-key session
 
 | Path | What it is |
 | --- | --- |
@@ -121,6 +184,7 @@ The tests check how the phase rules sort about 30 commands and tools. They also 
 | `.claude-plugin/marketplace.json` | makes this repo installable with `/plugin install` |
 | `hooks/register.tsx` | the plugin: hooks, pane, status line, `/progress` |
 | `hooks/classify.ts` | the phase rules: which tool or command is which phase |
+| `hooks/pricing.ts` | list prices per model, and matching any spelling of a model id to its price |
 | `types/index.d.ts` | types for the values it keeps in session state |
 | `tests/progress.test.tsx` | phase rules and job simulations |
 

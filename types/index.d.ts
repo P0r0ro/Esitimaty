@@ -26,11 +26,31 @@ export type Run = {
   phases: Record<Phase, number | null>
 }
 
+/** Tokens per model id, as the API reported the model that answered. */
+export type ByModel = Record<string, Totals>
+
+export type Limit = {
+  kind: string
+  percentUsed: number
+  resetsAt?: string
+}
+
+/** The context window and plan usage limits, as Claude Code last measured them. */
+export type Gauges = {
+  contextTokens: number | null
+  contextWindow: number
+  contextPercent: number | null
+  limits: Limit[]
+}
+
 declare module 'claude-code' {
   interface PluginState {
     esitimaty: {
       totals: Shaped<Totals>
+      byModel: Shaped<ByModel>
       run: Shaped<Run>
+      gauges: Shaped<Gauges>
+      model: string
       costUsd: number
       now: number
     }

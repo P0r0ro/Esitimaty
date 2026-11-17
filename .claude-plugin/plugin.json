@@ -1,0 +1,18 @@
+{
+  "name": "esitimaty",
+  "version": "0.1.0",
+  "description": "Esitimaty: a Progress card for Claude Code that estimates what a project, tool, mod or fix took: phases, time, API-price cost and tokens",
+  "author": {
+    "name": "P0r0ro"
+  },
+  "license": "MIT",
+  "repository": "https://github.com/P0r0ro/Esitimaty",
+  "keywords": [
+    "cost",
+    "tokens",
+    "usage",
+    "progress",
+    "statusline"
+  ],
+  "types": "./types/index.d.ts"
+}

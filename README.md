@@ -1,5 +1,13 @@
 # Esitimaty
 
+<p align="center">
+  <a href="docs/esitimaty-intro.mp4">
+    <img src="docs/esitimaty-intro.gif" alt="Esitimaty intro: the Progress card tracking phases, time, cost, tokens, model pricing and usage limits in Claude Code" width="900">
+  </a>
+  <br>
+  <sub><a href="docs/esitimaty-intro.mp4">Watch the full-quality video (MP4)</a></sub>
+</p>
+
 A **project monitor for Claude Code** that estimates what a piece of work took: a project, a tool, a mod or a bug fix. It shows:
 - **which model** is working, and what it charges
 - **which phases** the work went through, and how long each took

@@ -1,7 +1,8 @@
 // Claude API list prices, USD per million tokens.
 // Source: https://platform.claude.com/docs/en/about-claude/pricing (checked 2026-11-17).
-// Cache writes are priced at the 5-minute rate (1.25x input), the rate Claude Code's
-// default prompt caching uses. Pure functions, no `$`.
+// Cache writes are priced at the 1-hour rate (2x input): Claude Code caches its
+// prompts for an hour, and its own recorded session costs match this table to the
+// cent only at that rate. Pure functions, no `$`.
 
 export type Rates = {
   /** Display name, as people say it. */
@@ -23,7 +24,7 @@ const rates = (name: string, input: number, output: number, cacheRead: number): 
   name,
   input,
   output,
-  cacheWrite: input * 1.25,
+  cacheWrite: input * 2,
   cacheRead,
 })
 

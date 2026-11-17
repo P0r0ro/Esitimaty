@@ -1,6 +1,6 @@
 {
   "name": "esitimaty",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Esitimaty: a project monitor for Claude Code: current model and its rates, phases, time, API-price cost split by model, tokens, and context and plan-limit bars",
   "author": {
     "name": "P0r0ro"

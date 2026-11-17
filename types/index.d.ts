@@ -8,13 +8,13 @@ export type Totals = {
 
 export type Phase = 'research' | 'plan' | 'build' | 'test' | 'ship'
 
-/** One estimate's running record; `/progress reset` starts a new one. */
+/** The session being measured, as it stands in this process. */
 export type Run = {
-  /** When this estimate began (session start, or the last reset). */
-  startedAt: number
-  /** The session's ledger cost at the last reset, subtracted from what is shown. */
-  baseCostUsd: number
-  /** Time Claude spent working on finished turns. */
+  /** Time the session has been open, across every run of it (resumes included). */
+  activeMs: number
+  /** When the clock last added to `activeMs`, in this process. */
+  lastTickAt: number
+  /** Time Claude spent working on finished turns, across every run. */
   workMs: number
   /** A turn is running now, since `turnStartedAt`. */
   isWorking: boolean
@@ -24,6 +24,17 @@ export type Run = {
   phaseSince: number
   /** Time per phase; null for a phase that never happened. */
   phases: Record<Phase, number | null>
+  /** The session's cost, added up from every increase of Claude Code's ledger. */
+  costUsd: number
+  /** The ledger reading last added to `costUsd`; a lower reading means the ledger started over. */
+  ledgerPrev: number
+  /**
+   * `costUsd` when token counting began (the plugin first saw the session, or the
+   * last reset): the price check compares the tokens counted with the cost since then.
+   */
+  tokensFromUsd: number
+  /** When the plugin first saw this session. */
+  firstSeen: number
 }
 
 /** Tokens per model id, as the API reported the model that answered. */
@@ -43,6 +54,39 @@ export type Gauges = {
   limits: Limit[]
 }
 
+/** A response still streaming: what it has generated so far, estimated. */
+export type Live = {
+  outputTokens: number
+  usd: number
+}
+
+/** One session's numbers as saved in the plugin's store, under `session:<id>`. */
+export type SessionRecord = {
+  v: 1
+  id: string
+  /** The project folder the session ran in. */
+  root: string
+  firstSeen: number
+  updatedAt: number
+  activeMs: number
+  workMs: number
+  costUsd: number
+  lastLedger: number
+  tokensFromUsd: number
+  phases: Record<Phase, number | null>
+  totals: Totals
+  byModel: ByModel
+}
+
+/** The project's other saved sessions, added up. */
+export type ProjectTotals = {
+  sessions: number
+  activeMs: number
+  workMs: number
+  costUsd: number
+  tokens: number
+}
+
 declare module 'claude-code' {
   interface PluginState {
     esitimaty: {
@@ -50,8 +94,9 @@ declare module 'claude-code' {
       byModel: Shaped<ByModel>
       run: Shaped<Run>
       gauges: Shaped<Gauges>
+      live: Shaped<Live>
+      project: Shaped<ProjectTotals>
       model: string
-      costUsd: number
       now: number
     }
   }

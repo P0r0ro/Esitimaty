@@ -65,17 +65,19 @@ The bars turn from green to yellow at 60% and to red at 85%.
   | --- | --- |
   | **Model** | the model Claude Code is using right now (it follows `/model` switches), with its price per million tokens |
   | **Phases** | Research → Plan → Build → Test → Ship, with time in each ([below](#the-phases)) |
-  | **Time spent** | wall-clock time since the session started (or since your last reset) |
+  | **Time spent** | how long the session has been open, across every time you resumed it |
   | **Claude working** | only the time Claude was busy on your requests, not time it sat waiting for you |
   | **AI cost (estimate)** | what the session would cost at API list prices, each response priced at the rate of the model that answered it. **It is not your bill.** On a Pro/Max subscription you aren't charged this amount. |
   | **Tokens** | every token used, subagents included: input, output, cache reads and cache writes |
   | **By model** | tokens and cost for each model that worked, e.g. Opus for the main work and Haiku for a quick search subagent. Appears once more than one model has worked. |
   | **Context** | how full the context window is, e.g. `412K / 1.0M` |
   | **Session (5h) / Weekly (7d)** | your Pro/Max plan's usage limits, with when each resets |
+  | **This project** | time, Claude-working time, cost and tokens of **every session in this project folder** added up. Appears once the project has more than one session. |
 
-- **A status line entry**, always visible: `Opus 5.5 · ⏱ 15m 0s (15m 0s working) · ~$23.40 · 36.5M tok · ctx 41% · 5h 67% · 7d 24%`
+- **A status line entry**, always visible: `Opus 5.5 · ⏱ 15m 0s (15m 0s working) · ~$23.40 · 36.5M tok · ctx 41% · 5h 67% · 7d 24% · project ~$60.00`
 - **`/progress`** opens the pane and prints a text summary you can copy into a quote or a report.
-- **`/progress reset`** starts a new estimate from now. Use it to measure a single fix or feature inside a longer session.
+- **`/progress sessions`** lists every session of this project: when it started, its ID (to resume it), open time, working time, cost and tokens, with a total.
+- **`/progress reset`** zeroes this session's numbers so it counts from now. Other sessions keep theirs.
 
 ## The phases
 
@@ -97,21 +99,60 @@ The **total cost** comes from Claude Code's own cost ledger, the same number `/c
 
 The **By model** split and the rates under the model name come from the list prices in [`hooks/pricing.ts`](hooks/pricing.ts). Each model's tokens are priced at its own rates, and the split is scaled so it adds up exactly to the ledger total.
 
-| Model | Input | Output | Cache write | Cache read |
+| Model | Input | Output | Cache write (1h) | Cache read |
 | --- | --- | --- | --- | --- |
-| Fable 5.2 / Mythos 5.2 | $8 | $40 | $10 | $0.20 |
-| Fable 5.1 / Mythos 5.1 | $10 | $50 | $12.50 | $0.25 |
-| Fable 5 / Mythos 5 | $10 | $50 | $12.50 | $1.00 |
-| Opus 5.5 | $4 | $20 | $5 | $0.20 |
-| Opus 5, 4.8, 4.7, 4.6, 4.5 | $5 | $25 | $6.25 | $0.50 |
-| Opus 4.1, 4 | $15 | $75 | $18.75 | $1.50 |
-| Sonnet 5.5 | $2 | $10 | $2.50 | $0.10 |
-| Sonnet 5 | $2 | $10 | $2.50 | $0.20 |
-| Sonnet 4.6, 4.5, 4 | $3 | $15 | $3.75 | $0.30 |
-| Haiku 5.5 | $0.10 | $0.50 | $0.125 | $0.01 |
-| Haiku 4.5 | $1 | $5 | $1.25 | $0.10 |
+| Fable 5.2 / Mythos 5.2 | $8 | $40 | $16 | $0.20 |
+| Fable 5.1 / Mythos 5.1 | $10 | $50 | $20 | $0.25 |
+| Fable 5 / Mythos 5 | $10 | $50 | $20 | $1.00 |
+| Opus 5.5 | $4 | $20 | $8 | $0.20 |
+| Opus 5, 4.8, 4.7, 4.6, 4.5 | $5 | $25 | $10 | $0.50 |
+| Opus 4.1, 4 | $15 | $75 | $30 | $1.50 |
+| Sonnet 5.5 | $2 | $10 | $4 | $0.10 |
+| Sonnet 5 | $2 | $10 | $4 | $0.20 |
+| Sonnet 4.6, 4.5, 4 | $3 | $15 | $6 | $0.30 |
+| Haiku 5.5 | $0.10 | $0.50 | $0.20 | $0.01 |
+| Haiku 4.5 | $1 | $5 | $2 | $0.10 |
 
-These are USD per million tokens, from the [Claude pricing page](https://platform.claude.com/docs/en/about-claude/pricing), checked 2026-11-17. Cache writes use the 5-minute rate. Haiku 5.5 costs 5× more on prompts over 100K tokens; the ledger total accounts for that, but the per-model split uses the base rate. If prices change, edit `hooks/pricing.ts`. A model missing from the table still counts in the total, but shows "no price" in the split.
+These are USD per million tokens, from the [Claude pricing page](https://platform.claude.com/docs/en/about-claude/pricing), checked 2026-11-17. Cache writes use the 1-hour rate (2× input), because Claude Code caches its prompts for an hour. Haiku 5.5 costs 5× more on prompts over 100K tokens; the ledger total accounts for that, but the per-model split uses the base rate. If prices change, edit `hooks/pricing.ts`. A model missing from the table still counts in the total, but shows "no price" in the split.
+
+### Is the cost right?
+
+Yes. Claude Code records each finished session's cost per model. Multiplying that session's token counts by the prices above reproduces those costs **to the cent**:
+
+| Session | Model | Claude Code recorded | Tokens × list prices |
+| --- | --- | --- | --- |
+| A | Opus 5.5 | $1.5511852 | $1.5511852 |
+| B | Opus 4.7 | $8.4714245 | $8.4714245 |
+| C | Haiku 5.5 | $0.0158721 | $0.0158721 |
+| D | Haiku 4.5 | $0.062762 | $0.042762 + 2 web searches ($0.01 each) |
+
+`/progress` ends with a **Price check** that does the same thing live: it compares the tokens it counted, priced with the table above, against Claude Code's ledger. Any difference is an extra the ledger counts that tokens don't show, such as web searches ($10 per 1,000), fast mode or long-prompt Haiku 5.5 pricing.
+
+What the figure is **not**: it's the API list price of what the session used, not a bill. On Pro/Max you pay your subscription. It also leaves out Claude Code's own small background calls, which Claude Code doesn't count either.
+
+## Saved per session
+
+Every session's numbers are saved. **Resume a session and it carries on adding up** instead of starting over, so each session keeps its true total cost and time:
+
+- **What's saved:** time spent, Claude-working time, cost, tokens, the split by model and the phases.
+- **When:** every 10 seconds, at the end of every turn, and when the session ends.
+- **Where:** in the plugin's own store in your Claude Code configuration folder. Each session is saved under its ID, the one `claude --resume` takes.
+- **Resume:** `claude --resume <id>`, `claude --continue` and `/resume` all pick the saved numbers back up. `/clear` starts a new session; the old one stays saved and counts toward the project.
+- **Cost on resume:** the cost adds up from each increase of Claude Code's ledger. If Claude Code restores a session's cost when you resume it, the plugin sees that and doesn't count it twice. If the ledger starts from zero in a new process, the plugin keeps the saved amount and adds the new spending on top.
+- **Time spent** only counts time the session was open. Days between a session and its resume don't count, and neither does a laptop asleep with Claude Code open (gaps over 10 seconds are capped).
+- **Projects:** sessions are grouped by project folder (where Claude Code started). The **This project** section and `/progress sessions` add them all up, so you can quote what a whole project took across many sessions.
+
+## Live updates
+
+Everything on the card moves while Claude works, not only when it finishes:
+
+| Field | How often it updates |
+| --- | --- |
+| Tokens | Counted the moment each API request finishes (main loop and subagents). While a response streams, a provisional `streaming +N` estimate rises with the text, at about 4 characters per token. |
+| AI cost | Re-read from Claude Code's ledger after every request and every 2 seconds, plus the estimated cost of output still streaming |
+| Context, Session (5h), Weekly (7d) | Re-read after every request and every 2 seconds |
+| Time spent, Claude working, phase times | Every second |
+| Model | Every 5 seconds, and at the end of each turn |
 
 ## Limits
 
@@ -150,14 +191,15 @@ claude plugin install esitimaty --marketplace P0r0ro/Esitimaty
 ## Using it
 
 - The pane opens by itself when your terminal is **at least 144 columns wide**. In a narrower window, type `/progress` to open it.
-- To estimate one job: `/progress reset`, do the work, then `/progress` to get the summary.
+- To see what a whole project took: `/progress sessions`.
+- To measure one job inside a longer session: `/progress reset`, do the work, then `/progress`.
 
 ## Accuracy
 
-- **Cost** comes from Claude Code's own cost ledger, the same number `/cost` gives. It's an estimate at public API prices. After `/progress reset`, the cost before the reset is subtracted.
-- **Tokens** are added up from each turn's usage as the API reports it. Cache reads are counted, which is why totals grow quickly in long sessions.
+- **Cost** comes from Claude Code's own cost ledger, the same prices `/cost` uses, added up across every run of the session. It's an estimate at public API prices.
+- **Tokens** are added up from each API request's usage as the API reports it. Cache reads are counted, which is why totals grow quickly in long sessions. The live `streaming` estimate is replaced by the real count when each response ends.
 - **Phases** are worked out from which tools Claude uses, so they're a good guide, not an exact record. A shell command that both builds and tests counts as one or the other.
-- Tokens and phases are counted from the moment the plugin loads. If you resume a session that ran before you installed it, the earlier work isn't included in them. Time and cost still are.
+- Tokens, phases and time are counted from the moment the plugin first sees a session. For a session already under way when you install it, cost includes everything Claude Code had counted, but tokens and phases only include what came after.
 
 ## Development
 
@@ -178,6 +220,8 @@ claude plugin test .
 The tests check:
 - how the phase rules sort about 30 commands and tools
 - that model ids in every spelling find their price, and that each token kind is charged at its own rate
+- that cost, tokens, context and limits update mid-turn, and that output still streaming shows as a live estimate
+- that a resumed session carries on from its saved numbers, that a restored ledger isn't counted twice, that a project's sessions add up, and that `/clear` saves the old session and starts the new one at zero
 - six simulated sessions, printing the card for each:
   - building a tool
   - a bug fix
